@@ -133,6 +133,7 @@
 	      <object class="GtkCheckButton" id="fill">
                 <property name="label">Fill</property>
 		<property name="tooltip-text">Fill shape</property>
+                <property name="active">true</property>
               </object>
             </child>
 
@@ -171,6 +172,7 @@
 	      <object class="GtkEntry" id="text_string">
                 <property name="hexpand">true</property>
 		<property name="tooltip-text">Text to draw</property>
+		<property name="text">Hello, world!</property>
               </object>
             </child>
 

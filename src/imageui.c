@@ -704,7 +704,8 @@ imageui_tick(GtkWidget *widget, GdkFrameClock *frame_clock, gpointer user_data)
 		// 0/1/etc. discrete zoom
 		imageui->zoom_progress += dt;
 
-		double duration = imageui->should_animate ? ZOOM_DURATION : imageui->zoom_progress;
+		double duration = imageui->should_animate ? 
+			ZOOM_DURATION : imageui->zoom_progress;
 
 		// 0-1 progress in zoom animation
 		double t = ease_out_cubic(imageui->zoom_progress / duration);
@@ -1552,14 +1553,6 @@ gboolean
 imageui_make_paintable(Imageui *imageui)
 {
 	if (!imageui->is_paintable) {
-		/* We can't use vips_image_inplace(), it'll fail with many threads on
-		 * one image.
-		 *
-		 * tilesource_new_from_image() takes the base image, so we must copy
-		 * that to memory.
-		 *
-		 * FIXME ... add something like copy_memory that maps VIPS images r/w
-		 */
 		VipsImage *image;
 		if ((image = tilesource_get_base_image(imageui->tilesource))) {
 #ifdef DEBUG
@@ -1567,7 +1560,7 @@ imageui_make_paintable(Imageui *imageui)
 #endif /*DEBUG*/
 
 			VipsImage *memory;
-			if (!(memory = vips_image_copy_memory(image)))
+			if (!(memory = vips_image_copy_draw(image)))
 				return FALSE;
 
 			Tilesource *new_tilesource;

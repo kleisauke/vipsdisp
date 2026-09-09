@@ -68,11 +68,8 @@ struct _Imagewindow {
 	GtkWidget *title;
 	GtkWidget *subtitle;
 	GtkWidget *gears;
-#ifndef NIP4
 	GtkWidget *progress_bar;
 	GtkWidget *progress;
-	GtkWidget *progress_cancel;
-#endif /*!NIP4*/
 	GtkWidget *error_bar;
 	GtkWidget *error_label;
 	GtkWidget *main_box;
@@ -84,11 +81,6 @@ struct _Imagewindow {
 
 #ifdef NIP4
 	GtkWidget *region_menu;
-#else /*!NIP4*/
-	/* Throttle progress bar updates to a few per second with this.
-	 */
-	GTimer *progress_timer;
-	double last_progress_time;
 #endif /*NIP4*/
 
 	/* The set of active images in the stack right now. These are not
@@ -107,6 +99,10 @@ struct _Imagewindow {
 	/* Next transition hint.
 	 */
 	GtkStackTransitionType transition;
+
+	/* Set for progress cancel.
+	 */
+	gboolean cancel;
 };
 
 G_DEFINE_TYPE(Imagewindow, imagewindow, GTK_TYPE_APPLICATION_WINDOW);
@@ -480,94 +476,6 @@ imagewindow_reset_view(Imagewindow *win)
 	}
 }
 
-#ifndef NIP4
-static void
-imagewindow_preeval(VipsImage *image,
-	VipsProgress *progress, Imagewindow *win)
-{
-	gtk_action_bar_set_revealed(GTK_ACTION_BAR(win->progress_bar), TRUE);
-}
-
-typedef struct _EvalUpdate {
-	Imagewindow *win;
-	int eta;
-	int percent;
-} EvalUpdate;
-
-static gboolean
-imagewindow_eval_idle(void *user_data)
-{
-	EvalUpdate *update = (EvalUpdate *) user_data;
-	Imagewindow *win = update->win;
-
-	char str[256];
-	VipsBuf buf = VIPS_BUF_STATIC(str);
-
-	vips_buf_appendf(&buf, "%d%% complete, %d seconds to go",
-		update->percent, update->eta);
-	gtk_progress_bar_set_text(GTK_PROGRESS_BAR(win->progress),
-		vips_buf_all(&buf));
-
-	gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(win->progress),
-		update->percent / 100.0);
-
-	g_object_unref(win);
-
-	g_free(update);
-
-	return FALSE;
-}
-
-static void
-imagewindow_eval(VipsImage *image,
-	VipsProgress *progress, Imagewindow *win)
-{
-	double time_now;
-	EvalUpdate *update;
-
-	/* We can be ^Q'd during load. This is NULLed in _dispose.
-	 */
-	if (!win->progress_timer)
-		return;
-
-	time_now = g_timer_elapsed(win->progress_timer, NULL);
-
-	/* Throttle to 10Hz.
-	 */
-	if (time_now - win->last_progress_time < 0.1)
-		return;
-	win->last_progress_time = time_now;
-
-#ifdef DEBUG_VERBOSE
-	printf("imagewindow_eval: %d%%\n", progress->percent);
-#endif /*DEBUG_VERBOSE*/
-
-	/* This can come from the background load thread, so we can't update
-	 * the UI directly.
-	 */
-
-	update = g_new(EvalUpdate, 1);
-
-	update->win = win;
-	update->percent = progress->percent;
-	update->eta = progress->eta;
-
-	/* We don't want win to vanish before we process this update. The
-	 * matching unref is in the handler above.
-	 */
-	g_object_ref(win);
-
-	g_idle_add(imagewindow_eval_idle, update);
-}
-
-static void
-imagewindow_posteval(VipsImage *image,
-	VipsProgress *progress, Imagewindow *win)
-{
-	gtk_action_bar_set_revealed(GTK_ACTION_BAR(win->progress_bar), FALSE);
-}
-#endif /*!NIP4*/
-
 static void
 imagewindow_tilesource_changed(Tilesource *tilesource, Imagewindow *win)
 {
@@ -626,15 +534,6 @@ static void
 imagewindow_imageui_add(Imagewindow *win, Imageui *imageui)
 {
 	Tilesource *tilesource = imageui_get_tilesource(imageui);
-
-#ifndef NIP4
-	g_signal_connect_object(tilesource, "preeval",
-		G_CALLBACK(imagewindow_preeval), win, 0);
-	g_signal_connect_object(tilesource, "eval",
-		G_CALLBACK(imagewindow_eval), win, 0);
-	g_signal_connect_object(tilesource, "posteval",
-		G_CALLBACK(imagewindow_posteval), win, 0);
-#endif /*!NIP4*/ 
 
 	g_signal_connect_object(tilesource, "changed",
 		G_CALLBACK(imagewindow_tilesource_changed), win, 0);
@@ -847,24 +746,10 @@ imagewindow_dispose(GObject *object)
 #ifndef NIP4
 	VIPS_UNREF(win->save_folder);
 	VIPS_UNREF(win->load_folder);
-	VIPS_FREEF(g_timer_destroy, win->progress_timer);
 #endif /*!NIP4*/
 
 	G_OBJECT_CLASS(imagewindow_parent_class)->dispose(object);
 }
-
-#ifndef NIP4
-static void
-imagewindow_cancel_clicked(GtkWidget *button, Imagewindow *win)
-{
-	Tilesource *tilesource;
-	VipsImage *image;
-
-	if ((tilesource = imagewindow_get_tilesource(win)) &&
-		(image = tilesource_get_base_image(tilesource)))
-		vips_image_set_kill(image, TRUE);
-}
-#endif /*!NIP4*/
 
 static GdkTexture *
 texture_new_from_image(VipsImage *image)
@@ -1688,6 +1573,33 @@ imagewindow_dnd_drop(GtkDropTarget *target,
 }
 
 static void
+imagewindow_progress_begin(Progress *progress, Imagewindow *win)
+{
+	gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(win->progress), 0.0);
+	gtk_progress_bar_set_text(GTK_PROGRESS_BAR(win->progress), "");
+	gtk_action_bar_set_revealed(GTK_ACTION_BAR(win->progress_bar), TRUE);
+}
+
+static void
+imagewindow_progress_update(Progress *progress,
+	gboolean *cancel, Imagewindow *win)
+{
+	gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(win->progress),
+		progress->percent / 100.0);
+	gtk_progress_bar_set_text(GTK_PROGRESS_BAR(win->progress),
+	vips_buf_all(&progress->feedback));
+
+	if (win->cancel)
+		*cancel = TRUE;
+}
+
+static void
+imagewindow_progress_end(Progress *progress, Imagewindow *win)
+{
+	gtk_action_bar_set_revealed(GTK_ACTION_BAR(win->progress_bar), FALSE);
+}
+
+static void
 imagewindow_init(Imagewindow *win)
 {
 	GtkEventController *controller;
@@ -1699,11 +1611,9 @@ imagewindow_init(Imagewindow *win)
 	win->settings = g_settings_new(APPLICATION_ID);
 
 #ifndef NIP4
-	win->progress_timer = g_timer_new();
-	char *cwd = g_get_current_dir();
+	g_autofree char *cwd = g_get_current_dir();
 	win->save_folder = g_file_new_for_path(cwd);
 	win->load_folder = g_file_new_for_path(cwd);
-	g_free(cwd);
 #endif /*!NIP4*/
 
 	win->transition = GTK_STACK_TRANSITION_TYPE_NONE;
@@ -1719,11 +1629,6 @@ imagewindow_init(Imagewindow *win)
 	g_object_set(win->paintbox,
 		"image-window", win,
 		NULL);
-
-#ifndef NIP4
-	g_signal_connect_object(win->progress_cancel, "clicked",
-		G_CALLBACK(imagewindow_cancel_clicked), win, 0);
-#endif /*!NIP4*/
 
 	g_action_map_add_action_entries(G_ACTION_MAP(win),
 		imagewindow_entries, G_N_ELEMENTS(imagewindow_entries),
@@ -1782,6 +1687,14 @@ imagewindow_init(Imagewindow *win)
 	// some kind of gtk bug? hexpand on properties can't be set from .ui or in
 	// properties.c, but must be set after adding to a parent
 	g_object_set(win->properties, "hexpand", FALSE, NULL);
+
+	Progress *progress = progress_get();
+	g_signal_connect_object(progress, "begin",
+		G_CALLBACK(imagewindow_progress_begin), win, 0);
+	g_signal_connect_object(progress, "update",
+		G_CALLBACK(imagewindow_progress_update), win, 0);
+	g_signal_connect_object(progress, "end",
+		G_CALLBACK(imagewindow_progress_end), win, 0);
 }
 
 static void
@@ -1816,6 +1729,13 @@ imagewindow_pressed(GtkGestureClick *gesture,
 }
 
 static void
+imagewindow_progress_cancel_clicked(GtkButton *button, Imagewindow *win)
+{
+	// picked up by eval, see below
+	win->cancel = TRUE;
+}
+
+static void
 imagewindow_class_init(ImagewindowClass *class)
 {
 	GObjectClass *gobject_class = G_OBJECT_CLASS(class);
@@ -1832,7 +1752,6 @@ imagewindow_class_init(ImagewindowClass *class)
 #ifndef NIP4
 	BIND_VARIABLE(Imagewindow, progress_bar);
 	BIND_VARIABLE(Imagewindow, progress);
-	BIND_VARIABLE(Imagewindow, progress_cancel);
 #endif /*!NIP4*/
 	BIND_VARIABLE(Imagewindow, error_bar);
 	BIND_VARIABLE(Imagewindow, error_label);
@@ -1848,6 +1767,7 @@ imagewindow_class_init(ImagewindowClass *class)
 
 	BIND_CALLBACK(imagewindow_pressed);
 	BIND_CALLBACK(imagewindow_error_clicked);
+	BIND_CALLBACK(imagewindow_progress_cancel_clicked);
 
 	gobject_class->dispose = imagewindow_dispose;
 

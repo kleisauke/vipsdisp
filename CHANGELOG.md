@@ -1,5 +1,10 @@
 master
 
+## 4.2.0 tbd
+
+- resync with nip4 [kleisauke]
+- add the paintbox
+
 ## 4.1.4 19/4/26
 
 - set VIPS_UNLIMITED to disable DoS limits on file load for libvips 8.18+

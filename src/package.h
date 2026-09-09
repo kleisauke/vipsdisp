@@ -19,6 +19,7 @@
  */
 #define _(S) (S)
 #define GETTEXT_PACKAGE PACKAGE
+#define ngettext(S1, SN, N) (SN)
 
 /* The tile size for image rendering.
  */
@@ -39,6 +40,8 @@
 	G_STMT_END
 
 int draw_mask(VipsImage *image, VipsPel *ink, VipsImage *mask, int x, int y);
+int draw_smudge(VipsImage *image, VipsRect *area);
+int draw_image(VipsImage *from, VipsImage *to, VipsRect *area, int x, int y);
 
 // various forward typdefs
 
@@ -60,6 +63,7 @@ typedef struct _Imageui Imageui;
 #include "displaybar.h"
 #include "saveoptions.h"
 #include "properties.h"
+#include "progress.h"
 #include "fuzzy.h"
 #include "vipsdispmarshal.h"
 

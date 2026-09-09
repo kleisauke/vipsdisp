@@ -218,8 +218,10 @@
             </child>
 
             <child type="end">
-              <object class="GtkButton" id="progress_cancel">
+              <object class="GtkButton">
                 <property name="label">Cancel</property>
+                <signal name="clicked"
+                    handler="imagewindow_progress_cancel_clicked"/>
               </object>
             </child>
           </object>
