@@ -23,6 +23,7 @@ main(int argc, char **argv)
 #ifdef DEBUG
 	printf("DEBUG on in main.c\n");
 	vips_leak_set(TRUE);
+	vips_cache_set_max(0);
 
 	g_log_set_always_fatal(
 		G_LOG_FLAG_RECURSION |
