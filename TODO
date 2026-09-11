@@ -1,0 +1,147 @@
+- startup loads with:
+
+	thread 1 calls imagewindow_imageui_add()
+
+	imagewindow_imageui_add() calls tilesource_background_load()
+
+	tilesource_background_load() passes tilesource to
+	tilesource_background_load_worker()
+
+- replace loads with:
+
+	thread 1 (main thread) calls imagewindow_imageui_add()
+
+	imagewindow_imageui_add() calls tilesource_background_load()
+
+	tilesource_background_load() passes tilesource to
+	tilesource_background_load_worker()
+
+
+
+- thread 6 worker (thread 17 for replace)
+
+	tilesource_background_load_worker() calls vips_avg()
+
+	vips_avg() calls vips_sink()
+
+	vips_sink() calls vips_threadpool_run()
+
+	vips_threadpool_run() creates workers with vips_thread_execute()
+
+	then loops in vips_threadpool_run() listening for ticks
+G
+	tick comes back, call vips_image_eval()
+
+	progress_update_percent() queues idle task to update progress bar
+
+	idle task is never called during replace, but is called during 
+	initial load
+
+
+
+
+- changing idle priority with g_idle_add_full() does not help
+
+- button mouse-over highlight works during replace load
+
+- window resize works during replace load
+
+- try building debug glib and seeing what idle context 
+  progress_update_percent action is adding the event to
+
+	yup, added to same context
+
+- is g_main_context_iterate_unlocked() being run with same params for startup
+  progress and replace progress 
+
+  check debug stack traces for both contexts
+
+  startup trace:
+
+	progress_begin:
+	g_source_attach_unlocked: add GIdleSource to context 0x5ae48b4bfbe0
+	progress_update_percent: 100
+	g_source_attach_unlocked: add GIdleSource to context 0x5ae48b4bfbe0
+	progress_begin:
+	g_source_attach_unlocked: add GIdleSource to context 0x5ae48b4bfbe0
+	progress_update_percent: 1
+	g_source_attach_unlocked: add GIdleSource to context 0x5ae48b4bfbe0
+	
+	...
+
+	progress_update_percent: 19
+	progress_update_percent: 20
+	progress_update_percent: 21
+	g_source_attach_unlocked: add GIdleSource to context 0x59bb4d69fbe0
+	progress_event_idle:
+	progress_emit_update: 21%
+	g_source_attach_unlocked: add (null) to context 0x59bb4d69fbe0
+	progress_update_percent: 22
+
+
+  replace trace
+
+	progress_update_percent: 4
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add GIdleSource to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	progress_update_percent: 5
+	progress_update_percent: 6
+	progress_update_percent: 7
+	progress_update_percent: 8
+	progress_update_percent: 9
+	progress_update_percent: 10
+	progress_update_percent: 11
+	progress_update_percent: 12
+	progress_update_percent: 13
+	progress_update_percent: 14
+	progress_update_percent: 15
+	progress_update_percent: 16
+	progress_update_percent: 17
+	progress_update_percent: 18
+	progress_update_percent: 19
+	progress_update_percent: 20
+	progress_update_percent: 21
+	progress_update_percent: 22
+	progress_update_percent: 23
+	progress_update_percent: 24
+	progress_update_percent: 25
+	progress_update_percent: 26
+	progress_update_percent: 27
+	progress_update_percent: 28
+	progress_update_percent: 29
+	progress_update_percent: 30
+	progress_update_percent: 31
+	progress_update_percent: 32
+	progress_update_percent: 33
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	progress_update_percent: 34
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+	g_source_attach_unlocked: add (null) to context 0x62a72f320be0
+
+  why isn't progress_update_percent ever adding GIdleSource ??
+
+  trace into g_idle_add() and see why it's not queueing a GIdleSource
+

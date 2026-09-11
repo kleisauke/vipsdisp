@@ -685,7 +685,8 @@ imagewindow_open_current_file(Imagewindow *win)
 		if ((active = imagewindow_active_lookup_by_filename(win, filename))) {
 			imagewindow_active_touch(win, active);
 			imageui = active->imageui;
-		} else {
+		} 
+		else {
 			/* FIXME ... we only want to revalidate if eg. the timestamp has
 			 * changed, or perhaps on F5?
 			VipsImage *image;
