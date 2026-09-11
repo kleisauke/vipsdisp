@@ -33,7 +33,11 @@
 
 #include "package.h"
 
-G_DEFINE_TYPE(Progress, progress, G_TYPE_OBJECT)
+#ifdef NIP4
+G_DEFINE_TYPE(Progress, progress, IOBJECT_TYPE)
+#else /*!NIP4*/
+G_DEFINE_TYPE(Progress, progress, G_OBJECT_TYPE)
+#endif /*NIP4*/
 
 /* Our signals.
  */
@@ -209,7 +213,7 @@ progress_event_idle(void *user_data)
 
 	case SIG_END:
 		if (progress->count == 1) {
-			if (progress->busy) 
+			if (progress->busy)
 				progress_emit_end(progress);
 
 			progress->count = 0;

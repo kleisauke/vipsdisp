@@ -44,7 +44,11 @@
 	(G_TYPE_INSTANCE_GET_CLASS((obj), PROGRESS_TYPE, ProgressClass))
 
 typedef struct _Progress {
+#ifdef NIP4
+	iObject parent_object;
+#else /*!NIP4*/
 	GObject parent_object;
+#endif /*NIP4*/
 
 	/* Nest progress_begin() calls with this.
 	 */
@@ -74,7 +78,11 @@ typedef struct _Progress {
 } Progress;
 
 typedef struct _ProgressClass {
+#ifdef NIP4
+	iObjectClass parent_class;
+#else /*!NIP4*/
 	GObjectClass parent_class;
+#endif /*NIP4*/
 
 	/* Entering busy state: display progress bar, change cursor, etc.
 	 */
